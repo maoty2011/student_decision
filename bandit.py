@@ -11,7 +11,7 @@ from externalities import World, Offer, Transaction, Event, Categorical
 import KPIs_segmented
 
 class ContextualBandit(object):
-	def __init__(self, population=None, cluster_file_name='cdata/population_clustered.json', time_stamp=0, num_arms=2, context_dim=2, prior=(1.0,1.0), delta=0.05):
+	def __init__(self, population=None, cluster_file_name='cdata/population_clustered.json', time_stamp=0, num_arms=2, context_dim=2, prior=(1.0,1.0), delta=0.05, initialize=False):
 		self.num_arms = num_arms
 		self.context_dim = context_dim
 		self.offer_list = []
@@ -35,47 +35,12 @@ class ContextualBandit(object):
 		self.context_dim =len(set(clist))
 		
 		self.population_dict = dict([(person_id, {'group': 'control',
-			                     'offer id': -1,
-                           'viewed': 0,
-                           'trx': 0,
-                           'spend': 0.00}) for person_id in population.people])
-    
-		stats = dict([(person_id, {'group': 'control',
-			                     'offer id': -1,
-                           'viewed': 0,
-                           'trx': 0,
-                           'spend': 0.00}) for person_id in population.people])
-    
-		#print(type(stats),len(stats),stats)
-		transcript_file_name=population.transcript_file_name
-		#time_stamp = -1
-		with open(transcript_file_name, 'r') as transcript_file:
-			for line_number, line in enumerate(transcript_file):
-				text = line.strip()
-				if text != '':
-					record = json.loads(text)
-		    
-				current_person = record['person']
-				if current_person in population.people:
-					if record['event'] == 'offer received':
-						stats[current_person]['group'] = 'target'
-						current_offer_id = record['value']['offer id']
-						if current_offer_id not in self.offer_list:
-							self.offer_list.append(current_offer_id)
-						stats[current_person]['offer id'] = self.offer_list.keys().index( record['value']['offer id'] )
-			    
-					if record['event'] == 'offer viewed':
-						stats[current_person]['viewed'] += 1
-    
-					if record['event'] == 'transaction':
-						stats[current_person]['trx'] += 1
-						stats[current_person]['spend'] += record['value']['amount']
-        
-				#print(time_stamp, record['time'])
-				time_stamp = max(time_stamp, record['time'])
-    
-		self.population_dict = stats
-		
+                                                  'offer id': -1,
+                                                  'viewed': 0,
+                                                  'trx': 0,
+                                                  'last offer time': 0,
+                                                  'spend': 0.00}) for person_id in population.people])
+
 		loc_dm = [np.identity(self.context_dim) for i in range(self.num_arms)] # list of "design matrix", actually A_a, but still call them design matrix
 		self.design_matrix =[x[:] for x in loc_dm]  
 		loc_rv = [np.zeros(shape=(self.context_dim,)) for i in range(self.num_arms)] # list of resp vectors, stored as column vectors, b_a
@@ -117,6 +82,45 @@ class ContextualBandit(object):
 					self.respond_vector[trial_id] += (loc_size*feedback)*loc_context
 			#print((loc_size),loc_context,feedback)
 			
+	def update_dict_from_population(self,population):
+		# read the state of each customer from population and transcript file
+		stats = dict([(person_id, {'group': 'control',
+			                     'offer id': -1,
+                           'viewed': 0,
+                           'trx': 0,
+                           'last offer time': 0,
+                           'spend': 0.00}) for person_id in population.people])
+    
+		#print(type(stats),len(stats),stats)
+		transcript_file_name=population.transcript_file_name
+		time_stamp = -1
+		with open(transcript_file_name, 'r') as transcript_file:
+			for line_number, line in enumerate(transcript_file):
+				text = line.strip()
+				if text != '':
+					record = json.loads(text)
+	    
+				current_person = record['person']
+				if current_person in population.people:
+					if record['event'] == 'offer received':
+						stats[current_person]['group'] = 'target'
+						current_offer_id = record['value']['offer id']
+						if current_offer_id not in self.offer_list:
+							self.offer_list.append(current_offer_id)
+						stats[current_person]['offer id'] = self.offer_list.keys().index( record['value']['offer id'] )
+		    
+					if record['event'] == 'offer viewed':
+						stats[current_person]['viewed'] += 1
+   
+					if record['event'] == 'transaction':
+						stats[current_person]['trx'] += 1
+						stats[current_person]['spend'] += record['value']['amount']
+       
+				#print(time_stamp, record['time'])
+				time_stamp = max(time_stamp, record['time'])
+   
+		self.population_dict = stats
+
 			
 	def add_results_all_seg(self, population):
 		for i in range(self.context_dim):
@@ -238,17 +242,24 @@ class ContextualBandit(object):
 		recommended_arm = sampled_p.index( max(sampled_p) )
 		return self.offer_list.values()[recommended_arm]
 		
-	def recommendation_to_csv(self,deliveries_file_name=None,delimiter='|',control_fraction=0):
+	def recommendation_to_csv(self,deliveries_file_name=None,delimiter='|',control_fraction=0.25):
 		# write recommendations to a .csv file, in the same format as the delivery files
 		# keep control_fraction amount of people as control group
 		deliveries = []
 		for users in self.cluster_dict.keys():
 			val = self.population_dict[users]
-			if (val['group'] == 'target'):
+			if np.random.random() < 1.0 - control_fraction:
 			#only give offer to current target group people at a rate
-				if numpy.random.random
 				current_rec = self.send_recommendation(users).id
 				deliveries.append((users, current_rec))
+#		deliveries = []
+#		for users in self.cluster_dict.keys():
+#			val = self.population_dict[users]
+#			if (val['group'] == 'target'):
+#			#only give offer to people at a rate
+#				if (numpy.random.random() <= 1-control_fraction):
+#					current_rec = self.send_recommendation(users).id
+#					deliveries.append((users, current_rec))
 		
 		print("deliver length",len(deliveries))
 		if deliveries_file_name == None:

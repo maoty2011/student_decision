@@ -95,8 +95,8 @@ def KPI1(population,segment):
             KPI1[i].append(((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i])/len(offer_groups[i]))/(spent_cont[i]/num_control))
         except ZeroDivisionError:
             KPI1[i].append('NaN')
-            print("group"," offer",i)
-            print(((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i]),len(offer_groups[i])),(spent_cont[i],num_control))
+            #print("group"," offer",i)
+            #print(((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i]),len(offer_groups[i])),(spent_cont[i],num_control))
         try:
             KPI1[i].append((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i])/len(offer_groups[i])-spent_cont[i]/num_control)
         except ZeroDivisionError:
