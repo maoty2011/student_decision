@@ -212,7 +212,7 @@ def main(args):
         myBandit.add_results_all_seg(population)
         
         for i in range(myBandit.context_dim):
-        	print(myBandit.get_dist_para(group_num=i))
+        	print(myBandit.print_dist_para(group_num=i))
         
         table = myBandit.recommendation_to_csv(deliveries_file_name = deliveries_file_name)
         shutil.copy(deliveries_file_name, deliveries_log_file_name)

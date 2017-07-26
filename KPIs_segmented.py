@@ -11,8 +11,9 @@ from population import Population
 
 #Generate KPI1 for each offer, for the first 3 days of the validity period
 #KPI1: a person in target group spends x more than a person in control group
-def KPI1(population,segment):
+def KPI1(population,segment,debugging=False):
     transcript_file_name = population.transcript_file_name
+    #print(transcript_file_name)
     
     transcript=[]
     
@@ -95,8 +96,9 @@ def KPI1(population,segment):
             KPI1[i].append(((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i])/len(offer_groups[i]))/(spent_cont[i]/num_control))
         except ZeroDivisionError:
             KPI1[i].append('NaN')
-            #print("group"," offer",i)
-            #print(((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i]),len(offer_groups[i])),(spent_cont[i],num_control))
+            if debugging:
+                print("group"," offer",i)
+                print(((spent_targ[i], population.portfolio.values()[i].reward * num_rew[i]),len(offer_groups[i])),(spent_cont[i],num_control))
         try:
             KPI1[i].append((spent_targ[i]- population.portfolio.values()[i].reward * num_rew[i])/len(offer_groups[i])-spent_cont[i]/num_control)
         except ZeroDivisionError:

@@ -45,29 +45,42 @@ class ContextualBandit(object):
 		self.design_matrix =[x[:] for x in loc_dm]  
 		loc_rv = [np.zeros(shape=(self.context_dim,)) for i in range(self.num_arms)] # list of resp vectors, stored as column vectors, b_a
 		self.respond_vector = [x[:] for x in loc_rv]
+		self.control_vector = [1 for i in range(self.context_dim)]
 	
+	def control_grp_var(self,person_id):
+		# variance of certain control group feature, given by the sample sizes
+		
+		return variance
+		
 	def add_result_seg(self, population, group):
 		# adding result from a group of people, who belong to the same segmentation
 		# group is a list of Person types
 		andy = group[0] #pick a random user to calculate the context
+		grp_num = self.cluster_dict[andy][0]
 		
 		# count group size among this segmentation. size_of_target[x] should return # of ppl in current group received offer x
 		size_of_target = [0 for i in range(self.num_arms)]
+		size_of_control = 0
 		for person_id in group:
 			#print(self.population_dict)
-			tmp_group_id = self.population_dict[person_id]['offer id']
+			tmp_offer_id = self.population_dict[person_id]['offer id']
 			#print(tmp_group_id)
-			if (tmp_group_id >= 0):
-				size_of_target[tmp_group_id] += 1
+			if (tmp_offer_id >= 0):
+				size_of_target[tmp_offer_id] += 1
+			else:
+				size_of_control +=1
 		
+		raw_feedback = KPIs_segmented.KPI1(population, group)
+		print('group',self.cluster_dict[andy],raw_feedback)
+		self.control_vector[grp_num] += (size_of_control)
 		for trial_id in range(self.num_arms):
 			loc_context = self.context(andy, trial_id, time_stamp=-1)
 			# now update the design matrix and respond vector with a group of people given offer(trial_id)
 			# the size of the group still counts. i.e. a test in a group of 500 ppl is more convincing than that in a group of 5 ppl.
 			loc_size = size_of_target[trial_id]
-			self.design_matrix[trial_id] += loc_size*np.matmul(loc_context.reshape(self.context_dim,1),loc_context.reshape(1,self.context_dim))
+			#self.design_matrix[trial_id] += loc_size*np.matmul(loc_context.reshape(self.context_dim,1),loc_context.reshape(1,self.context_dim))
 			# update the respond vector with KPI
-			raw_feedback = KPIs_segmented.KPI1(population, group)
+			
 			if (type(raw_feedback)==str):
 				1 # do something
 				if (raw_feedback == "Control group is empty"):
@@ -75,12 +88,13 @@ class ContextualBandit(object):
 				else:
 					1 # no target, nothing to study
 			else:
-				feedback = raw_feedback[trial_id][0] # still could be NaN
+				feedback = raw_feedback[trial_id][1] # still could be NaN
 				if (feedback != 'NaN'):
 					# now study from exp
 					self.design_matrix[trial_id] += loc_size*np.matmul(loc_context.reshape(self.context_dim,1),loc_context.reshape(1,self.context_dim))
 					self.respond_vector[trial_id] += (loc_size*feedback)*loc_context
 			#print((loc_size),loc_context,feedback)
+		return raw_feedback
 			
 	def update_dict_from_population(self,population):
 		# read the state of each customer from population and transcript file
@@ -228,30 +242,57 @@ class ContextualBandit(object):
 	
 	def send_recommendation(self, current_user=None, method='Gaussian'):#method='disjointUCB','Gaussian'
 		#methods can be Bayesian, disjointUCB, hybirdUCB
+		grp_num = self.cluster_dict[current_user][0]
 		sampled_p = []
 		for trial_id in range(self.num_arms):
 			context = self.context(current_user, trial_id, self.time_stamp).reshape(self.context_dim,1)
 			#print(context)
 			theta = np.matmul(inv(self.design_matrix[trial_id]),self.respond_vector[trial_id])
 			loc_mean = np.matmul(theta.transpose(),context) 
-			loc_sd = np.sqrt(np.matmul(np.matmul(context.reshape(1,self.context_dim),inv(self.design_matrix[trial_id])),context))
+			loc_var1 = (np.matmul(np.matmul(context.reshape(1,self.context_dim),inv(self.design_matrix[trial_id])),context))
+			loc_var2 = 1.0/self.control_vector[grp_num]
 			
+			loc_sd = np.sqrt(loc_var1+loc_var2)
 			dist = norm(loc_mean, loc_sd)
 			sampled_p += [dist.rvs()]
 		#print(sampled_p)
 		recommended_arm = sampled_p.index( max(sampled_p) )
 		return self.offer_list.values()[recommended_arm]
-		
-	def recommendation_to_csv(self,deliveries_file_name=None,delimiter='|',control_fraction=0.25):
+	
+	def get_dist_para(self, group_num=0, method='Gaussian'):#method='disjointUCB','Gaussian'
+		#methods can be Bayesian, disjointUCB, hybirdUCB
+		sampled_p = []
+		for trial_id in range(self.num_arms):
+			context = np.array([int(i==group_num) for i in range(self.context_dim)])
+			#print(context)
+			theta = np.matmul(inv(self.design_matrix[trial_id]),self.respond_vector[trial_id])
+			loc_mean = np.matmul(theta.transpose(),context) 
+			loc_sd = np.sqrt(np.matmul(np.matmul(context.reshape(1,self.context_dim),inv(self.design_matrix[trial_id])),context))
+			
+			dist = norm(loc_mean, loc_sd)
+			sampled_p += [(loc_mean, loc_sd)]
+		#print(sampled_p)
+		return sampled_p
+			
+	def recommendation_to_csv(self,deliveries_file_name=None,delimiter='|',control_fraction=0.1):
 		# write recommendations to a .csv file, in the same format as the delivery files
 		# keep control_fraction amount of people as control group
 		deliveries = []
-		for users in self.cluster_dict.keys():
-			val = self.population_dict[users]
-			if np.random.random() < 1.0 - control_fraction:
-			#only give offer to current target group people at a rate
-				current_rec = self.send_recommendation(users).id
-				deliveries.append((users, current_rec))
+		loc_offer_list = [self.offer_list.values()[i].id for i in range(self.num_arms)]
+		counter = [[0 for j in range(self.num_arms+1)] for i in range(self.context_dim)]
+		for i in range(self.context_dim):
+        #separate group i first
+			for users in self.cluster_dict.keys():
+				if (self.cluster_dict[users]==[i]):
+					val = self.population_dict[users]
+					if np.random.random() < 1.0 - control_fraction:
+					#only give offer to current target group people at a rate
+						current_rec = self.send_recommendation(users).id
+						deliveries.append((users, current_rec))
+						counter[i][loc_offer_list.index(current_rec)] += 1
+					else:
+						counter[i][self.num_arms] += 1 #control group in group i people
+                        
 #		deliveries = []
 #		for users in self.cluster_dict.keys():
 #			val = self.population_dict[users]
@@ -269,5 +310,5 @@ class ContextualBandit(object):
 			for delivery in deliveries:
 				print >> deliveries_file, delimiter.join(map(str, delivery))
 		
-		return deliveries
+		return counter #counter[i][j] = group i offer j people
 	
