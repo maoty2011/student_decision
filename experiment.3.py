@@ -121,7 +121,7 @@ def main(args):
     world = World(real_time_tick=0.000, world_time_tick=6)
 
     people = list()
-    people.extend(create_people_0(1000))
+    people.extend(create_people_0(5000))
 
     portfolio = create_portfolio()
 

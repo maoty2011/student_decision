@@ -20,6 +20,7 @@ import bandit
 import segmentation
 import KPIs_segmented
 import THEkpi
+import experimentr
 
 dt_fmt = '%Y%m%d'
 now = datetime.datetime.strptime('20170718', dt_fmt)
@@ -96,7 +97,11 @@ def main(args):
     
     #read from population JSON file, 
     population_file_name = population_file_read
-    population = Population.from_json(population_file_name)
+    #population = Population.from_json(population_file_name)
+    
+    #make it the real population
+    population = experimentr.main(args)
+    
     print("read transcript from:",population.transcript_file_name)
     
     # read finished, redirect the population so that it reads from and writes to the right folder
@@ -134,7 +139,7 @@ def main(args):
     
     #print(myBandit.design_matrix)
     
-    table=myBandit.recommendation_to_csv(deliveries_file_name = deliveries_file_name)
+    table=myBandit.recommendation_to_csv(deliveries_file_name = deliveries_file_name, allow_stop=False)
     shutil.copy(deliveries_file_name, deliveries_log_file_name)
     print("Decision log saved to",deliveries_log_file_name)
     
@@ -230,8 +235,8 @@ def main(args):
         myBandit.update_dict_from_population(old_population)
         myBandit.add_results_all_seg(old_population)
         
-        for i in range(myBandit.context_dim):
-        	print(myBandit.get_dist_para(group_num=i))
+        #for i in range(myBandit.context_dim):
+        	#print(myBandit.get_dist_para(group_num=i))
         
         #ctrl_avg_trx = current_KPI[myBandit.num_arms]
         #tgt_avg_trx = current_KPI[myBandit.num_arms+1]
@@ -242,7 +247,7 @@ def main(args):
 #        	dynamic_control = dynamic_control*0.1
 #        if (dynamic_control > 0.9):
 #        	dynamic_control = 0.9
-        table = myBandit.recommendation_to_csv(deliveries_file_name = deliveries_file_name, control_fraction=dynamic_control)
+        table = myBandit.recommendation_to_csv(deliveries_file_name = deliveries_file_name, control_fraction=dynamic_control, allow_stop=False)
         #table = myB2.recommendation_to_csv(deliveries_file_name = deliveries_file_name)
         shutil.copy(deliveries_file_name, deliveries_log_file_name)
         print("Decision log saved to",deliveries_log_file_name)
@@ -271,11 +276,11 @@ def main(args):
             offer.valid_until += 3*4*6
         
         # brain wash
-        for person in population.people.values():
-            person.last_viewed_offer = None
-            person.last_transaction = None
-            person.last_unviewed_offer = None
-            person.history = []
+#        for person in population.people.values():
+#            person.last_viewed_offer = None
+#            person.last_transaction = None
+#            person.last_unviewed_offer = None
+#            person.history = []
         
         population.simulate(n_ticks=3*4)
     
@@ -296,9 +301,9 @@ def get_args():
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--data-path", default="cdata", help="data path file name")
+    parser.add_argument("--data-path", default="zdata", help="data path file name")
     parser.add_argument("--n-proc", default=1, help="number of Processes to use for simulation")
-    parser.add_argument("--repeat", default=0, help="number of periods to repeat")
+    parser.add_argument("--repeat", default=10, help="number of periods to repeat")
 
     args = parser.parse_args()
 
